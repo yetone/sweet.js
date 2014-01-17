@@ -14,7 +14,8 @@ module.exports = function(grunt) {
             },
             sweetjs: {
                 options: {
-                    compileFrom: "./lib/sweet"
+                    compileFrom: "./lib/sweet",
+                    modules: ["./macros/mori-macros.js"]
                 },
                 src: "src/*.js",
                 dest: ["build/lib/", "browser/scripts/"]
@@ -99,10 +100,11 @@ module.exports = function(grunt) {
             compileFrom: "./lib/sweet"
         });
         var sweet = require(options.compileFrom);
+        var cwd = process.cwd();
 
-        var moduleSrc = options.modules.map(function(m) {
-            return moduleCache[m] || (moduleCache[m] = readModule(m));
-        }).join("\n");
+        var modules = options.modules.map(function(path) {
+            return sweet.loadNodeModule(cwd, path);
+        });
 
         this.files.forEach(function(f) {
             var dest = Array.isArray(f.dest) ? f.dest : [f.dest];
@@ -115,7 +117,7 @@ module.exports = function(grunt) {
                 var output = sweet.compile(code, {
                     sourceMap: options.sourceMap,
                     filename: file,
-                    macros: moduleSrc
+                    modules: modules
                 });
 
                 dest.forEach(function(dest) {

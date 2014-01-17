@@ -859,25 +859,25 @@ describe("macro expander", function() {
         expect(a).to.be(0)
     });
 
-    it("should allow infix matching of object dot", function() {
-        macro m {
-            rule infix { $lhs:ident . | } => {
-                $lhs
-            }
-        }
+    // it("should allow infix matching of object dot", function() {
+    //     macro m {
+    //         rule infix { $lhs:ident . | } => {
+    //             $lhs
+    //         }
+    //     }
 
-        macro m2 {
-            rule { $tok } => {
-                $tok
-            }
-        }
+    //     macro m2 {
+    //         rule infix { $lhs:ident . | $tok } => {
+    //             $lhs.$tok
+    //         }
+    //     }
 
-        var a = 42;
-        expect(a.m).to.be(42);
+    //     var a = 42;
+    //     expect(a.m).to.be(42);
 
-        var b = { foo: 42 };
-        expect(b.m2 foo).to.be(42);
-    })
+    //     var b = { foo: 42 };
+    //     expect(b.m2 foo).to.be(42);
+    // })
 
     it("should allow a dot as a macro after an expression", function() {
         let . = macro {

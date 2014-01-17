@@ -2,13 +2,13 @@
     if (typeof exports === 'object') {
         // CommonJS
         factory(exports, require('underscore'),
-                require("./parser"), require("./expander"), require("./syntax"));
+                require("./parser"), require("./expander"), require("./syntax"), require("mori"));
     } else if (typeof define === 'function' && define.amd) {
         // AMD. Register as an anonymous module.
         define(['exports', 'underscore',
-                'parser', 'expander', 'syntax'], factory);
+                'parser', 'expander', 'syntax', 'mori'], factory);
     }
-}(this, function(exports, _, parser, expander, syntax) {
+}(this, function(exports, _, parser, expander, syntax, mori) {
 
     var get_expression = expander.get_expression;
     var syntaxFromToken = syntax.syntaxFromToken;
@@ -341,7 +341,7 @@
                 rest = stx;
             } else {
                 result = match.destructed || match.result.destruct(false);
-                rest = match.rest;
+                rest = mori.into_array(match.rest);
             }
         } else {
             result = null;
