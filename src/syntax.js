@@ -1,4 +1,4 @@
-import { List } from "immutable";
+import { List, Map } from "immutable";
 import { assert } from "./errors";
 import BindingMap from "./binding-map";
 import { Maybe } from "ramda-fantasy";
@@ -19,40 +19,36 @@ function sizeDecending(a, b) {
 }
 
 export default class Syntax {
-  // (Token or List<Syntax>, List<Scope>) -> Syntax
-  constructor(token, context = {bindings: new BindingMap(), scopeset: List()}) {
+  constructor(token, oldstx = {}) {
     this.token = token;
-    this.context = {
-      bindings: context.bindings,
-      scopeset: context.scopeset
-    };
-    Object.freeze(this.context);
+    this.bindings = oldstx.bindings != null ? oldstx.bindings : new BindingMap();
+    this.scopesetMap = oldstx.scopesetMap != null ? oldstx.scopesetMap : Map();
     Object.freeze(this);
   }
 
   static of(token, stx = {}) {
-    return new Syntax(token, stx.context);
+    return new Syntax(token, stx);
   }
 
   static fromNull(stx = {}) {
     return new Syntax({
       type: TokenType.NULL,
       value: null
-    }, stx.context);
+    }, stx);
   }
 
   static fromNumber(value, stx = {}) {
     return new Syntax({
       type: TokenType.NUMBER,
       value: value
-    }, stx.context);
+    }, stx);
   }
 
   static fromString(value, stx = {}) {
     return new Syntax({
       type: TokenType.STRING,
       str: value
-    }, stx.context);
+    }, stx);
   }
 
   static fromPunctuator(value, stx = {}) {
@@ -62,7 +58,7 @@ export default class Syntax {
         name: value
       },
       value: value
-    }, stx.context);
+    }, stx);
   }
 
   static fromKeyword(value, stx = {}) {
@@ -72,21 +68,21 @@ export default class Syntax {
         name: value
       },
       value: value
-    }, stx.context);
+    }, stx);
   }
 
   static fromIdentifier(value, stx = {}) {
     return new Syntax({
       type: TokenType.IDENTIFIER,
       value: value
-    }, stx.context);
+    }, stx);
   }
 
   static fromRegularExpression(value, stx = {}) {
     return new Syntax({
       type: TokenType.REGEXP,
       value: value
-    }, stx.context);
+    }, stx);
   }
 
   static fromBraces(inner, stx = {}) {
@@ -98,7 +94,7 @@ export default class Syntax {
       type: TokenType.RBRACE,
       value: "}"
     });
-    return new Syntax(List.of(left).concat(inner).push(right), stx.context);
+    return new Syntax(List.of(left).concat(inner).push(right), stx);
   }
 
   static fromBrackets(inner, stx = {}) {
@@ -110,7 +106,7 @@ export default class Syntax {
       type: TokenType.RBRACK,
       value: "]"
     });
-    return new Syntax(List.of(left).concat(inner).push(right), stx.context);
+    return new Syntax(List.of(left).concat(inner).push(right), stx);
   }
 
   static fromParens(inner, stx = {}) {
@@ -122,18 +118,19 @@ export default class Syntax {
       type: TokenType.RPAREN,
       value: ")"
     });
-    return new Syntax(List.of(left).concat(inner).push(right), stx.context);
+    return new Syntax(List.of(left).concat(inner).push(right), stx);
   }
 
 
   // () -> string
-  resolve() {
-    if (this.context.scopeset.size === 0 || !(this.isIdentifier() || this.isKeyword())) {
+  resolve(phase) {
+    assert(phase != null, "must provide a phase to resolve");
+    let stxScopes = this.scopesetMap.has(phase) ? this.scopesetMap.get(phase) : List();
+    if (stxScopes.size === 0 || !(this.isIdentifier() || this.isKeyword())) {
       return this.token.value;
     }
-    let scope = this.context.scopeset.last();
-    let stxScopes = this.context.scopeset;
-    let bindings = this.context.bindings;
+    let scope = stxScopes.last();
+    let bindings = this.bindings;
     if (scope) {
       // List<{ scopes: List<Scope>, binding: Symbol }>
       let scopesetBindingList = bindings.get(this);
@@ -155,13 +152,9 @@ export default class Syntax {
           let bindingStr = biggestBindingPair.get(0).binding.toString();
           if (Maybe.isJust(biggestBindingPair.get(0).alias)) {
             // null never happens because we just checked if it is a Just
-            return biggestBindingPair.get(0).alias.getOrElse(null).resolve();
+            return biggestBindingPair.get(0).alias.getOrElse(null).resolve(phase);
           }
           return bindingStr;
-          // if (Maybe.isJust(biggestBindingPair.get(0).alias)) {
-          //   return biggestBindingPair.get(0).alias.just().resolve();
-          // }
-          // return ;
         }
       }
     }
@@ -212,41 +205,49 @@ export default class Syntax {
     return this.token.slice(1, this.token.size - 1);
   }
 
-  addScope(scope, bindings, options = { flip: false }) {
-    let token = this.isDelimiter() ? this.token.map(s => s.addScope(scope, bindings, options)) : this.token;
+  addScope(scope, bindings, phase, options = { flip: false }) {
+    let token = this.isDelimiter() ? this.token.map(s => s.addScope(scope, bindings, phase, options)) : this.token;
     if (this.isTemplate()) {
       token = {
         type: this.token.type,
         items: token.items.map(it => {
           if (it instanceof Syntax && it.isDelimiter()) {
-            return it.addScope(scope, bindings, options);
+            return it.addScope(scope, bindings, phase, options);
           }
           return it;
         })
       };
     }
+    let oldScopeset = this.scopesetMap.has(phase) ? this.scopesetMap.get(phase) : List();
     let newScopeset;
-    // TODO: clean this logic up
     if (options.flip) {
-      let index = this.context.scopeset.indexOf(scope);
+      let index = oldScopeset.indexOf(scope);
       if (index !== -1) {
-        newScopeset = this.context.scopeset.remove(index);
+        newScopeset = oldScopeset.remove(index);
       } else {
-        newScopeset = this.context.scopeset.push(scope);
+        newScopeset = oldScopeset.push(scope);
       }
     } else {
-      newScopeset = this.context.scopeset.push(scope);
+      newScopeset = oldScopeset.push(scope);
     }
-    return new Syntax(token, {bindings: bindings, scopeset: newScopeset});
+    let newstx = {
+      scopesetMap: this.scopesetMap.set(phase, newScopeset), bindings
+    };
+    return new Syntax(token, newstx);
   }
-  removeScope(scope) {
-    let token = this.isDelimiter() ? this.token.map(s => s.removeScope(scope)) : this.token;
-    let newScopeset = this.context.scopeset;
-    let index = this.context.scopeset.indexOf(scope);
+
+  removeScope(scope, phase) {
+    let token = this.isDelimiter() ? this.token.map(s => s.removeScope(scope, phase)) : this.token;
+    let newScopeset = this.scopesetMap.has(phase) ? this.scopesetMap.get(phase) : List();
+    let index = newScopeset.indexOf(scope);
     if (index !== -1) {
-      newScopeset = this.context.scopeset.remove(index);
+      newScopeset = newScopeset.remove(index);
     }
-    return new Syntax(token, { bindings: this.context.bindings, scopeset: newScopeset} );
+    let newstx = {
+      bindings: this.bindings,
+      scopesetMap: this.scopesetMap.set(phase, newScopeset)
+    };
+    return new Syntax(token, newstx);
   }
 
   isIdentifier() {
